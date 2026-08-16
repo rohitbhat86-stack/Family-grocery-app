@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { ChefHat, ShoppingCart, Menu, Settings, LogOut, Eye } from 'lucide-react';
 
+const sampleRecipes = [
+  { id: 1, name: 'Besan Chilla', servings: 2, prepTime: 15, ingredients: ['besan (gram flour)', 'onion', 'green chili', 'salt'], protein: 12 },
+  { id: 2, name: 'Omelette / Masala Omelette', servings: 2, prepTime: 10, ingredients: ['eggs', 'onion', 'tomato', 'green chili'], protein: 18 },
+  { id: 3, name: 'Moong Dal Chilla', servings: 2, prepTime: 20, ingredients: ['moong dal', 'onion', 'ginger', 'green chili'], protein: 14 },
+  { id: 4, name: 'Wraps with Tofu', servings: 2, prepTime: 15, ingredients: ['tofu', 'lettuce', 'tomato', 'cucumber', 'dressing'], protein: 16 },
+  { id: 5, name: 'Homemade Paneer Tikka Wrap', servings: 2, prepTime: 25, ingredients: ['paneer', 'yogurt', 'spices', 'whole wheat wrap'], protein: 20 },
+  { id: 6, name: 'NY Times Chickpea Stew', servings: 4, prepTime: 30, ingredients: ['chickpeas', 'tomato', 'onion', 'garlic', 'spices'], protein: 15 },
+  { id: 7, name: 'Thai Green Curry', servings: 3, prepTime: 25, ingredients: ['coconut milk', 'green curry paste', 'vegetables', 'tofu'], protein: 12 },
+  { id: 8, name: 'Spinach Paneer Curry', servings: 3, prepTime: 30, ingredients: ['paneer', 'spinach', 'tomato', 'cream', 'spices'], protein: 18 },
+  { id: 9, name: 'Dosa', servings: 2, prepTime: 20, ingredients: ['rice flour', 'urad dal', 'fenugreek', 'salt'], protein: 8 },
+];
+
 const GroceryApp = () => {
   const [view, setView] = useState('menu');
   const [user, setUser] = useState(null);
@@ -24,22 +36,23 @@ const GroceryApp = () => {
     dietaryRestrictions: 'vegetarian',
   });
 
-  const sampleRecipes = [
-    { id: 1, name: 'Besan Chilla', servings: 2, prepTime: 15, ingredients: ['besan (gram flour)', 'onion', 'green chili', 'salt'], protein: 12 },
-    { id: 2, name: 'Omelette / Masala Omelette', servings: 2, prepTime: 10, ingredients: ['eggs', 'onion', 'tomato', 'green chili'], protein: 18 },
-    { id: 3, name: 'Moong Dal Chilla', servings: 2, prepTime: 20, ingredients: ['moong dal', 'onion', 'ginger', 'green chili'], protein: 14 },
-    { id: 4, name: 'Wraps with Tofu', servings: 2, prepTime: 15, ingredients: ['tofu', 'lettuce', 'tomato', 'cucumber', 'dressing'], protein: 16 },
-    { id: 5, name: 'Homemade Paneer Tikka Wrap', servings: 2, prepTime: 25, ingredients: ['paneer', 'yogurt', 'spices', 'whole wheat wrap'], protein: 20 },
-    { id: 6, name: 'NY Times Chickpea Stew', servings: 4, prepTime: 30, ingredients: ['chickpeas', 'tomato', 'onion', 'garlic', 'spices'], protein: 15 },
-    { id: 7, name: 'Thai Green Curry', servings: 3, prepTime: 25, ingredients: ['coconut milk', 'green curry paste', 'vegetables', 'tofu'], protein: 12 },
-    { id: 8, name: 'Spinach Paneer Curry', servings: 3, prepTime: 30, ingredients: ['paneer', 'spinach', 'tomato', 'cream', 'spices'], protein: 18 },
-    { id: 9, name: 'Dosa', servings: 2, prepTime: 20, ingredients: ['rice flour', 'urad dal', 'fenugreek', 'salt'], protein: 8 },
-  ];
-
   useEffect(() => {
     setRecipes(sampleRecipes);
     setUser({ name: 'Rohit', email: 'rohit@example.com' });
   }, []);
+
+  const categorizeIngredient = (ingredient) => {
+    const dairy = ['paneer', 'yogurt', 'cream', 'cheese'];
+    const proteins = ['eggs', 'tofu', 'chickpeas', 'moong dal', 'urad dal'];
+    const vegetables = ['onion', 'tomato', 'lettuce', 'cucumber', 'spinach', 'green chili', 'garlic'];
+    const grains = ['rice flour', 'besan', 'whole wheat wrap'];
+
+    if (dairy.some(d => ingredient.toLowerCase().includes(d))) return 'Dairy';
+    if (proteins.some(p => ingredient.toLowerCase().includes(p))) return 'Proteins & Legumes';
+    if (vegetables.some(v => ingredient.toLowerCase().includes(v))) return 'Vegetables';
+    if (grains.some(g => ingredient.toLowerCase().includes(g))) return 'Grains & Flours';
+    return 'Other';
+  };
 
   const generateShoppingList = () => {
     const selectedRecipes = Object.values(weeklyMenu).filter(r => r);
@@ -63,19 +76,6 @@ const GroceryApp = () => {
     }));
 
     setShoppingList(list.sort((a, b) => a.category.localeCompare(b.category)));
-  };
-
-  const categorizeIngredient = (ingredient) => {
-    const dairy = ['paneer', 'yogurt', 'cream', 'cheese'];
-    const proteins = ['eggs', 'tofu', 'chickpeas', 'moong dal', 'urad dal'];
-    const vegetables = ['onion', 'tomato', 'lettuce', 'cucumber', 'spinach', 'green chili', 'garlic'];
-    const grains = ['rice flour', 'besan', 'whole wheat wrap'];
-
-    if (dairy.some(d => ingredient.toLowerCase().includes(d))) return 'Dairy';
-    if (proteins.some(p => ingredient.toLowerCase().includes(p))) return 'Proteins & Legumes';
-    if (vegetables.some(v => ingredient.toLowerCase().includes(v))) return 'Vegetables';
-    if (grains.some(g => ingredient.toLowerCase().includes(g))) return 'Grains & Flours';
-    return 'Other';
   };
 
   const getSuggestedMenu = async () => {
