@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs/promises');
+const { existsSync } = require('fs');
 const path = require('path');
 require('dotenv').config();
 
@@ -195,7 +196,27 @@ function categorizeIngredient(ingredient) {
   return 'Other';
 }
 
-// 5050, not 5000: macOS Control Center (AirPlay Receiver) occupies 5000 by default.
+// In production this one service serves the built React app as well as the API,
+// so the calendar and /api share an origin — no second service, no CORS, and no
+// REACT_APP_API_URL to keep in sync. In local dev the build folder doesn't exist
+// and the CRA dev server on :3000 handles the UI instead.
+const FRONTEND_BUILD = path.join(__dirname, '..', 'frontend', 'build');
+
+if (existsSync(FRONTEND_BUILD)) {
+  app.use(express.static(FRONTEND_BUILD));
+
+  // Any non-API route is a client-side route — hand back index.html and let
+  // React render it. Registered after the API routes so it can't shadow them.
+  app.get(/^\/(?!api\/).*/, (req, res) => {
+    res.sendFile(path.join(FRONTEND_BUILD, 'index.html'));
+  });
+
+  console.log('Serving frontend build from', FRONTEND_BUILD);
+} else {
+  console.log('No frontend build found — API only (run the CRA dev server for the UI)');
+}
+
+// 5000 is occupied by macOS Control Center (AirPlay Receiver), so default to 5050.
 // Hosts like Render inject their own PORT, so this only affects local dev.
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => {
