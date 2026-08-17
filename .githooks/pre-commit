@@ -1,0 +1,34 @@
+#!/bin/sh
+# Blocks commits containing an Anthropic API key in ANY file.
+#
+# .gitignore alone is not enough: the key that leaked from this repo was committed
+# in .env.example, a file that is meant to be tracked. This hook scans the actual
+# staged content, so it catches keys pasted anywhere.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+
+# Real keys are long; the "sk-ant-your-key-here" placeholder is short and passes.
+PATTERN='sk-ant-[A-Za-z0-9_-]\{24,\}'
+
+if git diff --cached -U0 | grep -q "^+.*$PATTERN"; then
+    echo "COMMIT BLOCKED: an Anthropic API key appears in your staged changes."
+    echo
+    git diff --cached --name-only | while read -r f; do
+        if git diff --cached -U0 -- "$f" | grep -q "^+.*$PATTERN"; then
+            echo "  $f"
+        fi
+    done
+    echo
+    echo "Move the key into backend/.env (gitignored). Keep placeholders in .env.example."
+    echo "Override only if you are certain this is a false positive: git commit --no-verify"
+    exit 1
+fi
+
+# Belt and braces: never let a real .env file through.
+if git diff --cached --name-only --diff-filter=A | grep -qE '(^|/)\.env$|(^|/)\.env\.[^/]*$' \
+   && ! git diff --cached --name-only --diff-filter=A | grep -qE '\.env\.example$'; then
+    echo "COMMIT BLOCKED: you are adding a .env file. Secrets belong outside git."
+    exit 1
+fi
+
+exit 0

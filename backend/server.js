@@ -1,13 +1,24 @@
 const express = require('express');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
+const fs = require('fs/promises');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+// The week's plan lives in a JSON file so the cook loads the same menu the
+// planner saved, from any device. No database needed for a single household.
+const DATA_DIR = path.join(__dirname, 'data');
+const MENU_FILE = path.join(DATA_DIR, 'menu.json');
 
 const client = new Anthropic();
+
+const MODEL = 'claude-opus-5';
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const sampleRecipes = [
   { name: 'Besan Chilla', servings: 2, prepTime: 15, ingredients: ['besan (gram flour)', 'onion', 'green chili', 'salt'], protein: 12 },
@@ -25,6 +36,14 @@ app.post('/api/suggest-menu', async (req, res) => {
   try {
     const { userPrefs } = req.body;
 
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(503).json({
+        error: 'The server is missing ANTHROPIC_API_KEY. Copy backend/.env.example to backend/.env and add your key.',
+      });
+    }
+
+    const recipeNames = sampleRecipes.map(r => r.name);
+
     const prompt = `You are a nutritional meal planner. Based on these vegetarian recipes that a person loves eating, suggest a balanced 7-day weekly menu.
 
 RECIPES THE USER LOVES:
@@ -36,37 +55,68 @@ NUTRITION TARGETS:
 - Dietary: Vegetarian only
 
 CONSTRAINTS:
-1. Each day should have one recipe
+1. Each day gets exactly one recipe
 2. Vary recipes throughout the week (no repeats)
-3. Aim for daily protein target
-4. Consider prep time (mix quick and longer meals)
-5. Balance flavors (Indian, wraps, curries, simple meals)
+3. Aim for the daily protein target
+4. Mix quick and longer meals across the week
+5. Balance flavors (Indian, wraps, curries, simple meals)`;
 
-Respond with ONLY a JSON array of 7 recipe names, one per day (Monday-Sunday). Example format:
-["Besan Chilla", "Omelette / Masala Omelette", "Wraps with Tofu", ...]
-
-NO OTHER TEXT.`;
-
+    // Structured outputs guarantee a parseable response and constrain each day to a
+    // real recipe name, so the frontend's lookup by name can never miss.
     const message = await client.messages.create({
-      model: 'claude-opus-4-1',
-      max_tokens: 200,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
+      model: MODEL,
+      max_tokens: 4096,
+      output_config: {
+        effort: 'low',
+        format: {
+          type: 'json_schema',
+          schema: {
+            type: 'object',
+            properties: Object.fromEntries(
+              DAYS.map(day => [day, { type: 'string', enum: recipeNames }])
+            ),
+            required: DAYS,
+            additionalProperties: false,
+          },
         },
-      ],
+      },
+      messages: [{ role: 'user', content: prompt }],
     });
 
-    const responseText = message.content[0].text.trim();
-    const menu = JSON.parse(responseText);
+    const text = message.content.find(block => block.type === 'text')?.text;
+    if (!text) {
+      throw new Error(`Model returned no text (stop_reason: ${message.stop_reason})`);
+    }
+
+    const byDay = JSON.parse(text);
+    const menu = DAYS.map(day => byDay[day]);
 
     res.json({ menu });
   } catch (error) {
+    // Full detail to the server log; a short, actionable line to the browser.
     console.error('Error suggesting menu:', error);
-    res.status(500).json({ error: 'Failed to generate menu suggestions' });
+    const status = error?.status && error.status >= 400 ? error.status : 500;
+    res.status(status).json({
+      error: 'Failed to generate menu suggestions',
+      detail: describeError(error),
+    });
   }
 });
+
+function describeError(error) {
+  switch (error?.status) {
+    case 401:
+    case 403:
+      return "The server's ANTHROPIC_API_KEY was rejected. Check the key in backend/.env.";
+    case 429:
+      return 'Rate limited by the Anthropic API. Wait a moment and try again.';
+    case 529:
+      return 'The Anthropic API is temporarily overloaded. Try again shortly.';
+    default:
+      if (error?.status >= 500) return 'The Anthropic API had a server error. Try again shortly.';
+      return error?.message || String(error);
+  }
+}
 
 app.post('/api/shopping-list', async (req, res) => {
   try {
@@ -95,6 +145,39 @@ app.post('/api/shopping-list', async (req, res) => {
   }
 });
 
+app.get('/api/menu', async (req, res) => {
+  try {
+    const raw = await fs.readFile(MENU_FILE, 'utf8');
+    res.json(JSON.parse(raw));
+  } catch (error) {
+    // No plan saved yet is the normal first-run state, not an error.
+    if (error.code === 'ENOENT') return res.json(null);
+    console.error('Error reading menu:', error);
+    res.status(500).json({ error: 'Could not read the saved menu.' });
+  }
+});
+
+app.put('/api/menu', async (req, res) => {
+  try {
+    const week = req.body;
+    if (!week || typeof week !== 'object' || typeof week.days !== 'object') {
+      return res.status(400).json({ error: 'Expected a week object with a "days" field.' });
+    }
+
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    // Write to a temp file then rename, so an interrupted save can't leave
+    // a half-written menu.json behind.
+    const tmp = `${MENU_FILE}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(week, null, 2), 'utf8');
+    await fs.rename(tmp, MENU_FILE);
+
+    res.json({ ok: true, savedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error('Error saving menu:', error);
+    res.status(500).json({ error: 'Could not save the menu.' });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend running' });
 });
@@ -112,7 +195,9 @@ function categorizeIngredient(ingredient) {
   return 'Other';
 }
 
-const PORT = process.env.PORT || 5000;
+// 5050, not 5000: macOS Control Center (AirPlay Receiver) occupies 5000 by default.
+// Hosts like Render inject their own PORT, so this only affects local dev.
+const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
 });
