@@ -6,6 +6,7 @@ import WeekView from './components/WeekView';
 import GroceryList from './components/GroceryList';
 import Activities from './components/Activities';
 import AdminView from './components/AdminView';
+import AdminGate from './components/AdminGate';
 import RecipeSheet from './components/RecipeSheet';
 
 export default function App() {
@@ -134,14 +135,16 @@ export default function App() {
             </section>
           </>
         ) : (
-          <AdminView
-            week={week}
-            onChange={handleChange}
-            onSave={handleSave}
-            saving={saving}
-            savedAt={savedAt}
-            error={null}
-          />
+          <AdminGate>
+            <AdminView
+              week={week}
+              onChange={handleChange}
+              onSave={handleSave}
+              saving={saving}
+              savedAt={savedAt}
+              error={null}
+            />
+          </AdminGate>
         )}
       </main>
 

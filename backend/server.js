@@ -15,6 +15,13 @@ app.use(express.json({ limit: '1mb' }));
 const DATA_DIR = path.join(__dirname, 'data');
 const MENU_FILE = path.join(DATA_DIR, 'menu.json');
 
+// Gate on the Admin tab so the cook can't change the week by accident.
+// This is a "don't touch" latch, not real security — the passcode travels to the
+// browser and the repo is public. Override it with ADMIN_PASSCODE in the environment.
+const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || '0000';
+
+const passcodeOk = (req) => req.get('X-Admin-Passcode') === ADMIN_PASSCODE;
+
 const client = new Anthropic();
 
 const MODEL = 'claude-opus-5';
@@ -158,8 +165,21 @@ app.get('/api/menu', async (req, res) => {
   }
 });
 
+app.post('/api/admin/unlock', (req, res) => {
+  if (req.body?.passcode !== ADMIN_PASSCODE) {
+    return res.status(401).json({ error: 'That passcode is not right.' });
+  }
+  res.json({ ok: true });
+});
+
 app.put('/api/menu', async (req, res) => {
   try {
+    // Checked on the server too, so the week can't be rewritten by calling the
+    // API directly and skipping the screen.
+    if (!passcodeOk(req)) {
+      return res.status(401).json({ error: 'Enter the admin passcode before saving.' });
+    }
+
     const week = req.body;
     if (!week || typeof week !== 'object' || typeof week.days !== 'object') {
       return res.status(400).json({ error: 'Expected a week object with a "days" field.' });

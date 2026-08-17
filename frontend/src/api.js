@@ -36,12 +36,24 @@ function unreachableMessage() {
     : 'Could not reach the backend. Is it running on port 5050?';
 }
 
+// The unlocked passcode lives in sessionStorage, so it survives tab switches and
+// reloads but is gone once the browser tab closes.
+const PASSCODE_KEY = 'adminPasscode';
+
+export const getPasscode = () => sessionStorage.getItem(PASSCODE_KEY) || '';
+export const setPasscode = (code) => sessionStorage.setItem(PASSCODE_KEY, code);
+export const clearPasscode = () => sessionStorage.removeItem(PASSCODE_KEY);
+
 async function sendJSON(method, path, body) {
   let response;
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    const passcode = getPasscode();
+    if (passcode) headers['X-Admin-Passcode'] = passcode;
+
     response = await fetch(apiUrl(path), {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
   } catch (networkError) {
